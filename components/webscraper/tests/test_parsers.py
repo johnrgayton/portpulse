@@ -7,6 +7,8 @@ from news_scraper import (
     parse_gcaptain_list,
     parse_generic_port_list,
     parse_marineinsight_list,
+    make_article_id,
+    canonicalize_url,
     fetch_text,
     build_session,
 )
@@ -59,6 +61,7 @@ def test_extract_article_fields_pulls_content():
         <article>
           <h1>Port backlog update</h1>
           <time>2024-02-10</time>
+          <link rel="canonical" href="https://gcaptain.com/story-canonical" />
           <div class="entry-content">
             <p>First paragraph.</p>
             <p>Second paragraph.</p>
@@ -77,6 +80,13 @@ def test_extract_article_fields_pulls_content():
     assert data["title"] == "Port backlog update"
     assert "First paragraph." in data["content"]
     assert "Second paragraph." in data["content"]
+    assert data["canonical_url"] == "https://gcaptain.com/story-canonical"
+    assert data["article_id"] == make_article_id("https://gcaptain.com/story-canonical")
+
+
+def test_canonicalize_url_fallback():
+    url = "https://example.com/story?utm_source=foo"
+    assert canonicalize_url(url, html=None) == url
 
 
 @pytest.mark.integration

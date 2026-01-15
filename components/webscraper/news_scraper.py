@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 import argparse
+import hashlib
 import json
 import logging
 import os
 import random
 import sys
 import time
+import uuid
 from datetime import datetime
 from typing import Dict, Iterable, List, Optional
 from urllib.parse import urljoin, urlparse
@@ -103,6 +105,21 @@ def domain_matches(base_url: str, candidate_url: str) -> bool:
     return urlparse(base_url).netloc == urlparse(candidate_url).netloc
 
 
+def make_article_id(url: str) -> str:
+    return hashlib.sha256(url.encode("utf-8")).hexdigest()
+
+
+def canonicalize_url(url: str, html: Optional[str] = None) -> str:
+    if html:
+        soup = BeautifulSoup(html, "lxml")
+        canonical = soup.select_one("link[rel='canonical']")
+        if canonical:
+            href = canonical.get("href")
+            if href:
+                return href.strip()
+    return url
+
+
 def parse_gcaptain_list(html: str, base_url: str) -> List[Dict]:
     soup = BeautifulSoup(html, "lxml")
     items = []
@@ -194,9 +211,12 @@ def extract_article_fields(
             if text:
                 paragraphs.append(text)
 
+    canonical_url = canonicalize_url(url, html)
     return {
         "source": source,
         "url": url,
+        "canonical_url": canonical_url,
+        "article_id": make_article_id(canonical_url),
         "title": title,
         "published_raw": published,
         "content": "\n".join(paragraphs) if paragraphs else None,
@@ -241,6 +261,7 @@ def main() -> int:
     pacing_state = {}
     output_rows = []
     seen_urls = set()
+    run_id = str(uuid.uuid4())
 
     for source in sources:
         list_url = source["url"]
@@ -277,6 +298,9 @@ def main() -> int:
                     {
                         "source": item.get("source"),
                         "url": url,
+                        "canonical_url": url,
+                        "article_id": make_article_id(url),
+                        "run_id": run_id,
                         "title": item.get("title"),
                         "summary": item.get("summary"),
                         "published_raw": item.get("published_raw"),
@@ -302,15 +326,15 @@ def main() -> int:
                 logging.warning("failed to fetch article: %s", url)
                 continue
 
-            output_rows.append(
-                extract_article_fields(
-                    article_html,
-                    list_url,
-                    item.get("source") or source["name"],
-                    url,
-                    item.get("title"),
-                )
+            article_row = extract_article_fields(
+                article_html,
+                list_url,
+                item.get("source") or source["name"],
+                url,
+                item.get("title"),
             )
+            article_row["run_id"] = run_id
+            output_rows.append(article_row)
 
     count = write_jsonl(args.output, output_rows)
     logging.info("wrote %s records to %s", count, args.output)
