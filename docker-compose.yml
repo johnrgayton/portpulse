@@ -1,0 +1,7 @@
+services:
+  webscraper:
+    build:
+      context: ./components/webscraper
+    image: portpulse-webscraper
+    volumes:
+      - ./output:/app/output
