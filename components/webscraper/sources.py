@@ -1,6 +1,17 @@
+# Optional per-site headers can be provided via a "headers" dict.
 SOURCES = [
-    {"name": "gcaptain", "url": "https://gcaptain.com/", "kind": "gcaptain"},
-    {"name": "marineinsight", "url": "https://www.marineinsight.com/", "kind": "marineinsight"},
+    {
+        "name": "gcaptain",
+        "url": "https://gcaptain.com/",
+        "kind": "gcaptain",
+        "headers": {"Referer": "https://gcaptain.com/"},
+    },
+    {
+        "name": "marineinsight",
+        "url": "https://www.marineinsight.com/",
+        "kind": "marineinsight",
+        "headers": {"Referer": "https://www.marineinsight.com/"},
+    },
     {"name": "port_houston", "url": "https://porthouston.com/news/", "kind": "port"},
     {"name": "port_nynj", "url": "https://www.panynj.gov/port/en/press-releases.html", "kind": "port"},
     {"name": "port_savannah", "url": "https://gaports.com/news/", "kind": "port"},

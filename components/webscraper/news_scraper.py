@@ -3,6 +3,7 @@ import argparse
 import json
 import logging
 import os
+import random
 import sys
 import time
 from datetime import datetime
@@ -19,6 +20,7 @@ USER_AGENT = (
 )
 DEFAULT_TIMEOUT = 20
 RETRY_STATUSES = {429, 500, 502, 503, 504}
+JITTER_RATIO = 0.35
 
 
 def build_session() -> requests.Session:
@@ -28,24 +30,56 @@ def build_session() -> requests.Session:
             "User-Agent": USER_AGENT,
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Accept-Language": "en-US,en;q=0.9",
+            "DNT": "1",
+            "Connection": "keep-alive",
+            "Upgrade-Insecure-Requests": "1",
         }
     )
     return session
 
 
-def fetch_text(session: requests.Session, url: str, max_retries: int, sleep_s: float) -> Optional[str]:
+def compute_jitter(base: float, ratio: float) -> float:
+    if base <= 0 or ratio <= 0:
+        return 0.0
+    return random.uniform(0.0, base * ratio)
+
+
+def pace_request(pacing_state: Optional[Dict[str, float]], domain: str, base_sleep: float, jitter_ratio: float) -> None:
+    if pacing_state is None or base_sleep <= 0:
+        return
+    now = time.monotonic()
+    next_allowed = pacing_state.get(domain, now)
+    if now < next_allowed:
+        time.sleep(next_allowed - now)
+    delay = base_sleep + compute_jitter(base_sleep, jitter_ratio)
+    pacing_state[domain] = time.monotonic() + delay
+
+
+def fetch_text(
+    session: requests.Session,
+    url: str,
+    max_retries: int,
+    sleep_s: float,
+    pacing_state: Optional[Dict[str, float]] = None,
+    jitter_ratio: float = 0.0,
+    headers: Optional[Dict[str, str]] = None,
+) -> Optional[str]:
     for attempt in range(1, max_retries + 1):
+        if pacing_state is not None:
+            pace_request(pacing_state, urlparse(url).netloc, sleep_s, jitter_ratio)
         try:
-            resp = session.get(url, timeout=DEFAULT_TIMEOUT)
+            resp = session.get(url, timeout=DEFAULT_TIMEOUT, headers=headers)
             if resp.status_code in RETRY_STATUSES:
                 logging.warning("retryable status %s for %s", resp.status_code, url)
-                time.sleep(sleep_s * attempt)
+                backoff = sleep_s * (2 ** (attempt - 1))
+                time.sleep(backoff + compute_jitter(backoff, jitter_ratio))
                 continue
             resp.raise_for_status()
             return resp.text
         except requests.RequestException as exc:
             logging.warning("request failed (%s/%s) for %s: %s", attempt, max_retries, url, exc)
-            time.sleep(sleep_s * attempt)
+            backoff = sleep_s * (2 ** (attempt - 1))
+            time.sleep(backoff + compute_jitter(backoff, jitter_ratio))
     return None
 
 
@@ -204,13 +238,23 @@ def main() -> int:
     sources = SOURCES
 
     session = build_session()
+    pacing_state = {}
     output_rows = []
     seen_urls = set()
 
     for source in sources:
         list_url = source["url"]
         logging.info("fetch list: %s", list_url)
-        html = fetch_text(session, list_url, args.max_retries, args.sleep)
+        list_headers = source.get("headers")
+        html = fetch_text(
+            session,
+            list_url,
+            args.max_retries,
+            args.sleep,
+            pacing_state=pacing_state,
+            jitter_ratio=JITTER_RATIO,
+            headers=list_headers,
+        )
         if not html:
             logging.warning("failed to fetch list: %s", list_url)
             continue
@@ -243,8 +287,17 @@ def main() -> int:
                 )
                 continue
 
-            time.sleep(args.sleep)
-            article_html = fetch_text(session, url, args.max_retries, args.sleep)
+            article_headers = dict(source.get("headers") or {})
+            article_headers.setdefault("Referer", list_url)
+            article_html = fetch_text(
+                session,
+                url,
+                args.max_retries,
+                args.sleep,
+                pacing_state=pacing_state,
+                jitter_ratio=JITTER_RATIO,
+                headers=article_headers,
+            )
             if not article_html:
                 logging.warning("failed to fetch article: %s", url)
                 continue
