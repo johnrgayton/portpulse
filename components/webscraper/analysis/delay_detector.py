@@ -171,14 +171,46 @@ def write_jsonl(path: str, rows: Iterable[Dict]) -> int:
     return count
 
 
+def count_lines(path: str) -> int:
+    if not os.path.exists(path):
+        return 0
+    with open(path, "r", encoding="utf-8") as handle:
+        return sum(1 for _ in handle)
+
+
+def read_watermark(path: str) -> int:
+    if not os.path.exists(path):
+        return 0
+    with open(path, "r", encoding="utf-8") as handle:
+        content = handle.read().strip()
+    return int(content) if content.isdigit() else 0
+
+
+def write_watermark(path: str, value: int) -> None:
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write(str(value))
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Analyze scraped news for delay signals.")
     parser.add_argument("--input", default="output/news.jsonl", help="Input JSONL path")
     parser.add_argument("--output", default="output/news_scored.jsonl", help="Output JSONL path")
+    parser.add_argument(
+        "--watermark",
+        default="output/.analysis_watermark",
+        help="File to track last processed input line count",
+    )
     args = parser.parse_args()
 
     if not os.path.exists(args.input):
         raise SystemExit(f"input not found: {args.input}")
+
+    current_count = count_lines(args.input)
+    last_count = read_watermark(args.watermark)
+    if current_count <= last_count:
+        print("no new input records; skipping analysis")
+        return 0
 
     processed_ids = load_processed_ids(args.output)
     nlp = build_nlp()
@@ -203,6 +235,7 @@ def main() -> int:
             processed_ids.add(article_id)
 
     count = write_jsonl(args.output, new_rows)
+    write_watermark(args.watermark, current_count)
     print(f"wrote {count} records to {args.output}")
     return 0
 
