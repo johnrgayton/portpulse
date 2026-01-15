@@ -226,6 +226,7 @@ def extract_article_fields(
 
 
 def write_jsonl(path: str, rows: Iterable[Dict]) -> int:
+    # TODO: consider output rotation (date-stamped files) and archival/landing handoff.
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     count = 0
     with open(path, "a", encoding="utf-8") as handle:
