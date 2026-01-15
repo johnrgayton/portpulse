@@ -8,7 +8,7 @@ SOURCES = [
     },
     {
         "name": "marineinsight",
-        "url": "https://www.marineinsight.com/",
+        "url": "https://www.marineinsight.com/category/shipping-news/",
         "kind": "marineinsight",
         "headers": {"Referer": "https://www.marineinsight.com/"},
     },
