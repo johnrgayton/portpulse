@@ -1,17 +1,30 @@
-import os
+import asyncio
+import json
+import logging
+import websockets
+from datetime import datetime
+from config import SETTINGS 
 
-from config import SETTINGS
+async def connect_ais_stream():
 
+    async with websockets.connect("wss://stream.aisstream.io/v0/stream") as websocket:
+        logging.info("Connected to AIS Stream")
 
-def load_api_key() -> str:
-    # Prefer the value in SETTINGS, but fall back to the environment for flexibility.
-    api_key = SETTINGS.get("AISSTREAM_API_KEY") or os.getenv("AISSTREAM_API_KEY")
-    if not api_key:
-        raise RuntimeError("AISSTREAM_API_KEY is required to connect to AISStream")
-    return api_key
+        subscribe_message = {
+            "APIKey": SETTINGS["AISSTREAM_API_KEY"],
+            "BoundingBoxes": SETTINGS["EAST_COAST_PORTS_BOXES"],
+            "FilterMessageTypes": SETTINGS["MESSAGE_TYPES"],
+        }
 
+        subscribe_msg_json = json.dumps(subscribe_message)
+        await websocket.send(subscribe_msg_json)
+        logging.info("Subscription message sent")
+
+        async for message in websocket:
+            message = json.loads(message)
+            
+            ais_message = message["Message"]["PositionType"]
 
 if __name__ == "__main__":
-    # Placeholder to verify configuration wiring before you implement the producer loop.
-    _ = load_api_key()
-    print("AISStream API key loaded. Ready to start producer loop.")
+    logging.basicConfig(level=logging.INFO)
+    asyncio.run(connect_ais_stream())
