@@ -16,6 +16,8 @@ import requests
 from bs4 import BeautifulSoup
 
 from sources import SOURCES
+
+
 USER_AGENT = (
     "Mozilla/5.0 (compatible; PortPulseScraper/0.1; "
     "+https://example.com/portpulse)"

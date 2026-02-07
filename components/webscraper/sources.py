@@ -12,13 +12,44 @@ SOURCES = [
         "kind": "marineinsight",
         "headers": {"Referer": "https://www.marineinsight.com/"},
     },
-    {"name": "port_houston", "url": "https://porthouston.com/news/", "kind": "port"},
-    {"name": "port_nynj", "url": "https://www.panynj.gov/port/en/press-releases.html", "kind": "port"},
-    {"name": "port_savannah", "url": "https://gaports.com/news/", "kind": "port"},
-    {"name": "port_charleston", "url": "https://scspa.com/news/", "kind": "port"},
-    {"name": "jaxport", "url": "https://www.jaxport.com/news-media/news/", "kind": "port"},
-    {"name": "port_of_miami", "url": "https://www.portmiami.biz/press-releases/", "kind": "port"},
-    {"name": "port_of_new_orleans", "url": "https://portnola.com/newsroom/news", "kind": "port"},
-    {"name": "port_of_mobile", "url": "https://www.asdd.com/Port-Updates", "kind": "port"},
-    {"name": "port_tampa_bay", "url": "https://www.porttb.com/news-room/", "kind": "port"},
+    {
+        "name": "port_houston",
+        "url": "https://porthouston.com/notices-alerts",
+        "kind": "port",
+    },
+    {
+        "name": "port_nynj",
+        "url": "https://www.panynj.gov/port-authority/en/alerts.html",
+        "kind": "port",
+    },
+    {
+        "name": "port_charleston",
+        "url": "https://scspa.com/news/",
+        "kind": "port",
+    },
+    {
+        "name": "jaxport",
+        "url": "https://www.jaxport.com/news-media/news/",
+        "kind": "port",
+    },
+    {
+        "name": "port_of_miami",
+        "url": "https://www.portmiami.biz/press-releases/",
+        "kind": "port",
+    },
+    {
+        "name": "port_of_new_orleans",
+        "url": "https://portnola.com/newsroom/news",
+        "kind": "port",
+    },
+    {
+        "name": "port_of_mobile",
+        "url": "https://www.asdd.com/Port-Updates",
+        "kind": "port",
+    },
+    {
+        "name": "port_tampa_bay",
+        "url": "https://www.porttb.com/news-room/",
+        "kind": "port",
+    },
 ]
