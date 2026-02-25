@@ -107,8 +107,8 @@ def domain_matches(base_url: str, candidate_url: str) -> bool:
     return urlparse(base_url).netloc == urlparse(candidate_url).netloc
 
 
-def make_article_id(url: str) -> str:
-    return hashlib.sha256(url.encode("utf-8")).hexdigest()
+def make_hash_id(txt: str) -> str:
+    return hashlib.sha256(txt.encode("utf-8")).hexdigest()
 
 
 def canonicalize_url(url: str, html: Optional[str] = None) -> str:
@@ -195,7 +195,7 @@ def parse_generic_port_list(html: str, base_url: str) -> List[Dict]:
 def extract_article_fields(
     html: str, base_url: str, source: str, url: str, title_hint: Optional[str]
 ) -> Dict:
-    soup = BeautifulSoup(html, "lxml")
+    soup = BeautifulSoup(html, from_encoding="utf-8", features="lxml")
     title = text_or_none(soup.select_one("h1")) or title_hint
     published = text_or_none(soup.select_one("time"))
 
@@ -218,7 +218,7 @@ def extract_article_fields(
         "source": source,
         "url": url,
         "canonical_url": canonical_url,
-        "article_id": make_article_id(canonical_url),
+        "article_id": make_hash_id(canonical_url),
         "title": title,
         "published_raw": published,
         "content": "\n".join(paragraphs) if paragraphs else None,
@@ -302,10 +302,11 @@ def main() -> int:
                         "source": item.get("source"),
                         "url": url,
                         "canonical_url": url,
-                        "article_id": make_article_id(url),
+                        "article_id": make_hash_id(url),
                         "run_id": run_id,
                         "title": item.get("title"),
                         "summary": item.get("summary"),
+                        "summary_hash": make_hash_id(item.get("summary") or ""),
                         "published_raw": item.get("published_raw"),
                         "scraped_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
                         "domain": urlparse(list_url).netloc,
