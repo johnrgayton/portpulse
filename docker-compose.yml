@@ -5,19 +5,19 @@ services:
     image: portpulse-webscraper
     volumes:
       - ./output:/app/output
-  analysis:
-    build:
-      context: ./components/webscraper/analysis
-    image: portpulse-webscraper-analysis
-    depends_on:
-      - webscraper
-    volumes:
-      - ./output:/app/output
-    command:
-      - /bin/sh
-      - -c
-      - |
-        until [ -s /app/output/news.jsonl ]; do
-          sleep 2
-        done
-        python /app/delay_detector.py
+  # analysis:
+  #   build:
+  #     context: ./components/webscraper/analysis
+  #   image: portpulse-webscraper-analysis
+  #   depends_on:
+  #     - webscraper
+  #   volumes:
+  #     - ./output:/app/output
+  #   command:
+  #     - /bin/sh
+  #     - -c
+  #     - |
+  #       until [ -s /app/output/news.jsonl ]; do
+  #         sleep 2
+  #       done
+  #       python /app/delay_detector.py
