@@ -28,6 +28,7 @@ JITTER_RATIO = 0.35
 
 
 def build_session() -> requests.Session:
+    # Centralize browser-like defaults once so all requests share consistent headers.
     session = requests.Session()
     session.headers.update(
         {
@@ -43,12 +44,14 @@ def build_session() -> requests.Session:
 
 
 def compute_jitter(base: float, ratio: float) -> float:
+    # Add bounded randomness to reduce deterministic request patterns.
     if base <= 0 or ratio <= 0:
         return 0.0
     return random.uniform(0.0, base * ratio)
 
 
 def pace_request(pacing_state: Optional[Dict[str, float]], domain: str, base_sleep: float, jitter_ratio: float) -> None:
+    # Per-domain pacing limits burst traffic when multiple sources are scraped in one run.
     if pacing_state is None or base_sleep <= 0:
         return
     now = time.monotonic()
@@ -68,6 +71,7 @@ def fetch_text(
     jitter_ratio: float = 0.0,
     headers: Optional[Dict[str, str]] = None,
 ) -> Optional[str]:
+    # Fetch with retry/backoff+jitter so transient failures do not fail the entire run.
     for attempt in range(1, max_retries + 1):
         if pacing_state is not None:
             pace_request(pacing_state, urlparse(url).netloc, sleep_s, jitter_ratio)
@@ -95,6 +99,7 @@ def text_or_none(node) -> Optional[str]:
 
 
 def normalize_url(base_url: str, href: str) -> Optional[str]:
+    # Resolve relative links while ignoring fragment-only anchors.
     if not href:
         return None
     href = href.strip()
@@ -107,11 +112,12 @@ def domain_matches(base_url: str, candidate_url: str) -> bool:
     return urlparse(base_url).netloc == urlparse(candidate_url).netloc
 
 
-def make_article_id(url: str) -> str:
-    return hashlib.sha256(url.encode("utf-8")).hexdigest()
+def make_hash_id(txt: str) -> str:
+    return hashlib.sha256(txt.encode("utf-8")).hexdigest()
 
 
 def canonicalize_url(url: str, html: Optional[str] = None) -> str:
+    # Prefer canonical links so tracking/query variants map to the same logical article.
     if html:
         soup = BeautifulSoup(html, "lxml")
         canonical = soup.select_one("link[rel='canonical']")
@@ -123,6 +129,7 @@ def canonicalize_url(url: str, html: Optional[str] = None) -> str:
 
 
 def parse_gcaptain_list(html: str, base_url: str) -> List[Dict]:
+    # Site-specific extractor for gCaptain listing pages.
     soup = BeautifulSoup(html, "lxml")
     items = []
     for article in soup.select("article"):
@@ -147,6 +154,7 @@ def parse_gcaptain_list(html: str, base_url: str) -> List[Dict]:
 
 
 def parse_marineinsight_list(html: str, base_url: str) -> List[Dict]:
+    # Site-specific extractor for Marine Insight listing pages.
     soup = BeautifulSoup(html, "lxml")
     items = []
     for link in soup.select("h3 a, h2 a, article a"):
@@ -168,6 +176,7 @@ def parse_marineinsight_list(html: str, base_url: str) -> List[Dict]:
 
 
 def parse_generic_port_list(html: str, base_url: str) -> List[Dict]:
+    # Generic fallback for port/news pages with inconsistent markup.
     soup = BeautifulSoup(html, "lxml")
     items = []
     seen = set()
@@ -195,7 +204,8 @@ def parse_generic_port_list(html: str, base_url: str) -> List[Dict]:
 def extract_article_fields(
     html: str, base_url: str, source: str, url: str, title_hint: Optional[str]
 ) -> Dict:
-    soup = BeautifulSoup(html, "lxml")
+    # Extract normalized article payload for downstream scoring and storage.
+    soup = BeautifulSoup(html, from_encoding="utf-8", features="lxml")
     title = text_or_none(soup.select_one("h1")) or title_hint
     published = text_or_none(soup.select_one("time"))
 
@@ -218,7 +228,7 @@ def extract_article_fields(
         "source": source,
         "url": url,
         "canonical_url": canonical_url,
-        "article_id": make_article_id(canonical_url),
+        "article_id": make_hash_id(canonical_url),
         "title": title,
         "published_raw": published,
         "content": "\n".join(paragraphs) if paragraphs else None,
@@ -228,23 +238,35 @@ def extract_article_fields(
 
 
 def write_jsonl(path: str, rows: Iterable[Dict]) -> int:
-    # TODO: consider output rotation (date-stamped files) and archival/landing handoff.
-    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-    count = 0
-    with open(path, "a", encoding="utf-8") as handle:
-        for row in rows:
-            handle.write(json.dumps(row, ensure_ascii=True) + "\n")
-            count += 1
-    return count
+    # Write each run to a unique timestamped JSONL file derived from the target path.
+    output_dir = os.path.dirname(path) or "."
+    os.makedirs(output_dir, exist_ok=True)
+
+    base_name = os.path.basename(path)
+    stem, ext = os.path.splitext(base_name)
+    run_stamp = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+    output_path = os.path.join(output_dir, f"{stem}-{run_stamp}{ext or '.jsonl'}")
+
+    row_list = list(rows)
+    if not row_list:
+        return 0
+
+    # Pre-serialize once for efficient batched writes.
+    lines = [json.dumps(row, ensure_ascii=True) + "\n" for row in row_list]
+    with open(output_path, "w", encoding="utf-8") as handle:
+        handle.writelines(lines)
+    return len(row_list)
 
 
 def limit_items(items: List[Dict], limit: int) -> List[Dict]:
+    # Guardrail to cap source volume during testing and incremental runs.
     if limit <= 0:
         return items
     return items[:limit]
 
 
 def main() -> int:
+    # Orchestrates source fetch -> parse -> optional article fetch -> JSONL append.
     parser = argparse.ArgumentParser(description="Scrape maritime news sources.")
     parser.add_argument("--output", default="output/news.jsonl", help="JSONL output path")
     parser.add_argument("--limit-per-source", type=int, default=15, help="Max items per source")
@@ -258,6 +280,7 @@ def main() -> int:
         level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
     )
 
+    # Source config is isolated in sources.py for easy enable/disable updates.
     sources = SOURCES
 
     session = build_session()
@@ -297,15 +320,17 @@ def main() -> int:
             seen_urls.add(url)
 
             if args.no_article_fetch:
+                # Fast mode writes list-page metadata without full article requests.
                 output_rows.append(
                     {
                         "source": item.get("source"),
                         "url": url,
                         "canonical_url": url,
-                        "article_id": make_article_id(url),
+                        "article_id": make_hash_id(url),
                         "run_id": run_id,
                         "title": item.get("title"),
                         "summary": item.get("summary"),
+                        "summary_hash": make_hash_id(item.get("summary") or ""),
                         "published_raw": item.get("published_raw"),
                         "scraped_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
                         "domain": urlparse(list_url).netloc,
@@ -315,6 +340,7 @@ def main() -> int:
                 continue
 
             article_headers = dict(source.get("headers") or {})
+            # Referer improves compatibility with sites that enforce basic request provenance.
             article_headers.setdefault("Referer", list_url)
             article_html = fetch_text(
                 session,
