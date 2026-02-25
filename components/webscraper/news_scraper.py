@@ -238,15 +238,24 @@ def extract_article_fields(
 
 
 def write_jsonl(path: str, rows: Iterable[Dict]) -> int:
-    # Append JSONL so partial runs are still useful and prior history is preserved.
-    # TODO: consider output rotation (date-stamped files) and archival/landing handoff.
-    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-    count = 0
-    with open(path, "a", encoding="utf-8") as handle:
-        for row in rows:
-            handle.write(json.dumps(row, ensure_ascii=True) + "\n")
-            count += 1
-    return count
+    # Write each run to a unique timestamped JSONL file derived from the target path.
+    output_dir = os.path.dirname(path) or "."
+    os.makedirs(output_dir, exist_ok=True)
+
+    base_name = os.path.basename(path)
+    stem, ext = os.path.splitext(base_name)
+    run_stamp = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+    output_path = os.path.join(output_dir, f"{stem}-{run_stamp}{ext or '.jsonl'}")
+
+    row_list = list(rows)
+    if not row_list:
+        return 0
+
+    # Pre-serialize once for efficient batched writes.
+    lines = [json.dumps(row, ensure_ascii=True) + "\n" for row in row_list]
+    with open(output_path, "w", encoding="utf-8") as handle:
+        handle.writelines(lines)
+    return len(row_list)
 
 
 def limit_items(items: List[Dict], limit: int) -> List[Dict]:
