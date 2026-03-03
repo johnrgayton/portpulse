@@ -15,6 +15,7 @@ from urllib.parse import urljoin, urlparse
 import requests
 from bs4 import BeautifulSoup
 import boto3
+from botocore.exceptions import BotoCoreError, ClientError
 
 from sources import SOURCES
 
@@ -26,6 +27,9 @@ USER_AGENT = (
 DEFAULT_TIMEOUT = 20
 RETRY_STATUSES = {429, 500, 502, 503, 504}
 JITTER_RATIO = 0.35
+DEFAULT_S3_BUCKET = "portpulse"
+DEFAULT_S3_PREFIX = "webscraper/raw"
+DEFAULT_AWS_REGION = "us-east-1"
 
 
 def build_session() -> requests.Session:
@@ -259,6 +263,49 @@ def write_jsonl(path: str, rows: Iterable[Dict]) -> int:
     return len(row_list)
 
 
+def write_jsonl_to_s3(
+    bucket: str,
+    prefix: str,
+    rows: Iterable[Dict],
+    run_id: str,
+    aws_region: Optional[str] = None,
+) -> int:
+    # Store raw records in S3 using run_date partitioning for easier downstream ingestion.
+    row_list = list(rows)
+    if not row_list:
+        return 0
+
+    run_dt = datetime.utcnow()
+    run_stamp = run_dt.strftime("%Y%m%dT%H%M%SZ")
+    run_date = run_dt.strftime("%Y-%m-%d")
+    normalized_prefix = prefix.strip("/")
+    object_name = f"news_{run_stamp}_{run_id}_{len(row_list)}.jsonl"
+    object_key = (
+        f"{normalized_prefix}/run_date={run_date}/{object_name}"
+        if normalized_prefix
+        else f"run_date={run_date}/{object_name}"
+    )
+
+    lines = [json.dumps(row, ensure_ascii=True) + "\n" for row in row_list]
+    body = "".join(lines).encode("utf-8")
+
+    client_kwargs = {"region_name": aws_region} if aws_region else {}
+    s3_client = boto3.client("s3", **client_kwargs)
+    try:
+        s3_client.put_object(
+            Bucket=bucket,
+            Key=object_key,
+            Body=body,
+            ContentType="application/x-ndjson",
+        )
+    except (BotoCoreError, ClientError) as exc:
+        logging.error("failed to upload JSONL to s3://%s/%s: %s", bucket, object_key, exc)
+        return -1
+
+    logging.info("uploaded %s records to s3://%s/%s", len(row_list), bucket, object_key)
+    return len(row_list)
+
+
 def limit_items(items: List[Dict], limit: int) -> List[Dict]:
     # Guardrail to cap source volume during testing and incremental runs.
     if limit <= 0:
@@ -269,7 +316,10 @@ def limit_items(items: List[Dict], limit: int) -> List[Dict]:
 def main() -> int:
     # Orchestrates source fetch -> parse -> optional article fetch -> JSONL append.
     parser = argparse.ArgumentParser(description="Scrape maritime news sources.")
-    parser.add_argument("--output", default="output/news.jsonl", help="JSONL output path")
+    parser.add_argument("--output", default=None, help="Optional local JSONL mirror path")
+    parser.add_argument("--s3-bucket", default=DEFAULT_S3_BUCKET, help="S3 bucket for JSONL output")
+    parser.add_argument("--s3-prefix", default=DEFAULT_S3_PREFIX, help="S3 key prefix for output objects")
+    parser.add_argument("--aws-region", default=DEFAULT_AWS_REGION, help="AWS region for S3 operations")
     parser.add_argument("--limit-per-source", type=int, default=15, help="Max items per source")
     parser.add_argument("--max-retries", type=int, default=3, help="HTTP retry attempts")
     parser.add_argument("--sleep", type=float, default=1.5, help="Seconds between requests")
@@ -366,8 +416,20 @@ def main() -> int:
             article_row["run_id"] = run_id
             output_rows.append(article_row)
 
-    count = write_jsonl(args.output, output_rows)
-    logging.info("wrote %s records to %s", count, args.output)
+    count = write_jsonl_to_s3(
+        bucket=args.s3_bucket,
+        prefix=args.s3_prefix,
+        rows=output_rows,
+        run_id=run_id,
+        aws_region=args.aws_region,
+    )
+    if count < 0:
+        return 1
+    logging.info("wrote %s records to s3 bucket %s", count, args.s3_bucket)
+
+    if args.output:
+        local_count = write_jsonl(args.output, output_rows)
+        logging.info("mirrored %s records to %s", local_count, args.output)
     return 0
 
 
