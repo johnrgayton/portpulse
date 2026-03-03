@@ -269,6 +269,28 @@ services:
               - mechanism: SCRAM-SHA-256
                 password: secretpassword
                 username: superuser
+  ############################################
+  # AIS Stream Kafka -> S3 (MinIO) Sink
+  ############################################
+  aisstream-s3-sink:
+    container_name: aisstream-s3-sink
+    image: docker.redpanda.com/redpandadata/connect
+    networks:
+      - redpanda_network
+    depends_on:
+      redpanda-0:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      mc:
+        condition: service_started
+    command:
+      - /redpanda-connect
+      - -c
+      - /etc/redpanda-connect/aisstream-s3-sink.yaml
+    volumes:
+      - ./connect/aisstream-s3-sink.yaml:/etc/redpanda-connect/aisstream-s3-sink.yaml:ro
+    restart: unless-stopped
   ####################
   # rpk container to create the edu-filtered-domains topic #
   # See https://docs.redpanda.com/current/reference/rpk/rpk-topic/rpk-topic-create/
@@ -407,8 +429,10 @@ services:
     entrypoint: >
       /bin/sh -c "
       until (/usr/bin/mc alias set minio http://minio:9000 minio redpandaTieredStorage7) do echo '...waiting...' && sleep 1; done;
-      /usr/bin/mc mb minio/redpanda;
+      /usr/bin/mc mb --ignore-existing minio/redpanda;
+      /usr/bin/mc mb --ignore-existing minio/portpulse;
       /usr/bin/mc policy set public minio/redpanda;
+      /usr/bin/mc policy set public minio/portpulse;
       tail -f /dev/null
       "
   ############################

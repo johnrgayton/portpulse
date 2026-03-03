@@ -1,0 +1,44 @@
+input:
+  kafka_franz:
+    seed_brokers: ["redpanda-0:9092"]
+    topics: ["ais_stream"]
+    consumer_group: "aisstream-s3-sink-v1"
+    start_from_oldest: true
+    checkpoint_limit: 1024
+    sasl:
+      - mechanism: SCRAM-SHA-256
+        username: superuser
+        password: secretpassword
+
+pipeline:
+  processors:
+    # Wrap each Kafka record with metadata so downstream storage has replay/debug context.
+    - mapping: |
+        root.kafka_topic = meta("kafka_topic")
+        root.kafka_partition = meta("kafka_partition").or("0").number()
+        root.kafka_offset = meta("kafka_offset").or("0").number()
+        root.kafka_timestamp = meta("kafka_timestamp_ms").or("0").number()
+        root.ingested_at = now()
+        root.payload = content().string().parse_json().catch(content().string())
+
+output:
+  aws_s3:
+    bucket: "portpulse"
+    path: 'ais_stream/run_date=${!now().ts_format("2006-01-02")}/hour=${!now().ts_format("15")}/batch_${!timestamp_unix_nano()}_${!uuid_v4()}.jsonl.gz'
+    endpoint: "http://minio:9000"
+    region: "local"
+    force_path_style_urls: true
+    content_type: "application/gzip"
+    credentials:
+      id: "minio"
+      secret: "redpandaTieredStorage7"
+    timeout: "30s"
+    batching:
+      count: 500
+      period: "20s"
+      byte_size: 1048576
+      processors:
+        - archive:
+            format: lines
+        - compress:
+            algorithm: gzip
