@@ -12,7 +12,11 @@ SOURCES = [
         "kind": "marineinsight",
         "headers": {"Referer": "https://www.marineinsight.com/"},
     },
-""" 2026-02-25: commenting out the ports for now, as they are not being scraped and are causing errors. We can re-enable them once we have scrapers for them."""
+]
+# 2026-02-25: commenting out the ports for now, as they are not being scraped and are causing errors. 
+# We can re-enable them once we have scrapers for them.
+
+
 #    {
     #     "name": "port_houston",
     #     "url": "https://porthouston.com/notices-alerts",
@@ -53,4 +57,4 @@ SOURCES = [
     #     "url": "https://www.porttb.com/news-room/",
     #     "kind": "port",
     # },
-]
+
