@@ -15,7 +15,7 @@ from urllib.parse import urljoin, urlparse
 import requests
 from bs4 import BeautifulSoup
 import boto3
-from botocore.exceptions import BotoCoreError, ClientError
+from botocore.exceptions import BotoCoreError, ClientError, ProfileNotFound
 
 from sources import SOURCES
 
@@ -269,6 +269,7 @@ def write_jsonl_to_s3(
     rows: Iterable[Dict],
     run_id: str,
     aws_region: Optional[str] = None,
+    aws_profile: Optional[str] = None,
 ) -> int:
     # Store raw records in S3 using run_date partitioning for easier downstream ingestion.
     row_list = list(rows)
@@ -289,8 +290,18 @@ def write_jsonl_to_s3(
     lines = [json.dumps(row, ensure_ascii=True) + "\n" for row in row_list]
     body = "".join(lines).encode("utf-8")
 
-    client_kwargs = {"region_name": aws_region} if aws_region else {}
-    s3_client = boto3.client("s3", **client_kwargs)
+    # Explicit profile selection avoids ambiguity across terminal/IDE runtimes.
+    try:
+        if aws_profile:
+            session = boto3.Session(profile_name=aws_profile, region_name=aws_region)
+            s3_client = session.client("s3")
+        else:
+            client_kwargs = {"region_name": aws_region} if aws_region else {}
+            s3_client = boto3.client("s3", **client_kwargs)
+    except ProfileNotFound as exc:
+        logging.error("aws profile '%s' was not found: %s", aws_profile, exc)
+        return -1
+
     try:
         s3_client.put_object(
             Bucket=bucket,
@@ -320,6 +331,7 @@ def main() -> int:
     parser.add_argument("--s3-bucket", default=DEFAULT_S3_BUCKET, help="S3 bucket for JSONL output")
     parser.add_argument("--s3-prefix", default=DEFAULT_S3_PREFIX, help="S3 key prefix for output objects")
     parser.add_argument("--aws-region", default=DEFAULT_AWS_REGION, help="AWS region for S3 operations")
+    parser.add_argument("--aws-profile", default=None, help="Optional AWS shared-credentials profile name")
     parser.add_argument("--limit-per-source", type=int, default=15, help="Max items per source")
     parser.add_argument("--max-retries", type=int, default=3, help="HTTP retry attempts")
     parser.add_argument("--sleep", type=float, default=1.5, help="Seconds between requests")
@@ -422,6 +434,7 @@ def main() -> int:
         rows=output_rows,
         run_id=run_id,
         aws_region=args.aws_region,
+        aws_profile=args.aws_profile,
     )
     if count < 0:
         return 1
