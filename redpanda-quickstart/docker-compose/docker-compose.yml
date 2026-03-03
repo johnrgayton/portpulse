@@ -285,8 +285,7 @@ services:
       mc:
         condition: service_started
     command:
-      - /redpanda-connect
-      - -c
+      - run
       - /etc/redpanda-connect/aisstream-s3-sink.yaml
     volumes:
       - ./connect/aisstream-s3-sink.yaml:/etc/redpanda-connect/aisstream-s3-sink.yaml:ro
@@ -300,6 +299,7 @@ services:
       - topic
       - create
       - edu-filtered-domains
+      - --if-not-exists
       - -X user=superuser
       - -X pass=secretpassword
       - -X brokers=redpanda-0:9092
