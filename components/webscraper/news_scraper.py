@@ -205,7 +205,7 @@ def extract_article_fields(
     html: str, base_url: str, source: str, url: str, title_hint: Optional[str]
 ) -> Dict:
     # Extract normalized article payload for downstream scoring and storage.
-    soup = BeautifulSoup(html, from_encoding="utf-8", features="lxml")
+    soup = BeautifulSoup(html, features="lxml")
     title = text_or_none(soup.select_one("h1")) or title_hint
     published = text_or_none(soup.select_one("time"))
 
