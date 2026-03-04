@@ -23,15 +23,10 @@ pipeline:
 
 output:
   aws_s3:
-    bucket: "portpulse"
+    bucket: "${AWS_S3_BUCKET:portpulse}"
     path: 'ais_stream/run_date=${!now().ts_format("2006-01-02")}/hour=${!now().ts_format("15")}/batch_${!timestamp_unix_nano()}_${!uuid_v4()}.jsonl.gz'
-    endpoint: "http://minio:9000"
-    region: "local"
-    force_path_style_urls: true
+    region: "${AWS_REGION:us-east-1}"
     content_type: "application/gzip"
-    credentials:
-      id: "minio"
-      secret: "redpandaTieredStorage7"
     timeout: "30s"
     batching:
       count: 500
