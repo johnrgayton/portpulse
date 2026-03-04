@@ -286,9 +286,6 @@ services:
     environment:
       # Use standard AWS SDK environment variables for auth and target region.
       AWS_REGION: ${AWS_REGION:-us-east-1}
-      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
-      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
-      AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
       AWS_S3_BUCKET: ${AWS_S3_BUCKET:-portpulse}
     volumes:
       - ./connect/aisstream-s3-sink.yaml:/etc/redpanda-connect/aisstream-s3-sink.yaml:ro
